@@ -9,6 +9,15 @@ import java.io.UnsupportedEncodingException;
 import java.util.HashSet;
 import java.util.List;
 
+import javax.management.RuntimeErrorException;
+
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import cmu.arktweetnlp.impl.ModelSentence;
 import cmu.arktweetnlp.impl.Sentence;
 import cmu.arktweetnlp.impl.features.FeatureExtractor;
@@ -36,6 +45,8 @@ public class RunTagger {
 	/** Can be either filename or resource name **/
 	String modelFilename = "/cmu/arktweetnlp/model.20120919";
 
+	
+	
 	public boolean noOutput = false;
 	public boolean justTokenize = false;
 	
@@ -44,6 +55,7 @@ public class RunTagger {
 	public boolean showConfidence = true;
 
 	PrintStream outputStream;
+	JsonGenerator outputGenerator;
 	Iterable<Sentence> inputIterable = null;
 	
 	// Evaluation stuff
@@ -64,6 +76,9 @@ public class RunTagger {
 	public RunTagger() throws UnsupportedEncodingException {
 		// force UTF-8 here, so don't need -Dfile.encoding
 		this.outputStream = new PrintStream(System.out, true, "UTF-8");
+		
+
+		JsonFactory factory = new JsonFactory();
 	}
 	public void detectAndSetInputFormat(String tweetData) throws IOException {
 		JsonTweetReader jsonTweetReader = new JsonTweetReader();
@@ -87,7 +102,13 @@ public class RunTagger {
 			runTaggerInEvalMode();
 			return;
 		} 
-
+		
+		if (outputFormat.equals("json")) {
+			JsonFactory jsonFactory = new JsonFactory(); 
+			outputGenerator = jsonFactory.createGenerator(outputStream);
+			outputGenerator.setCodec(new ObjectMapper());
+		}
+ 
 		JsonTweetReader jsonTweetReader = new JsonTweetReader();
 		
 		LineNumberReader reader = new LineNumberReader(BasicFileIO.openFileToReadUTF8(inputFilename));
@@ -128,6 +149,8 @@ public class RunTagger {
 				
 			if (outputFormat.equals("conll")) {
 				outputJustTagging(sentence, modelSentence);
+			} else if (outputFormat.equals("json")) {
+				outputSensibleTagging(sentence, modelSentence, jsonTweetReader.getRootNode());
 			} else {
 				outputPrependedTagging(sentence, modelSentence, justTokenize, line);				
 			}
@@ -298,6 +321,44 @@ public class RunTagger {
 	}
 
 
+	/**
+	 * Output the tagging in the old way (which could be read by a JSON parser)
+	 * 
+	 * @param lSent
+	 * @param mSent
+	 * @param inputLine -- assume does NOT have trailing newline.  (default from java's readLine)
+	 * @throws IOException 
+	 * @throws JsonProcessingException If the produced JSON couldn't be written.
+	 */
+	public void outputSensibleTagging(Sentence lSent, ModelSentence mSent, JsonNode inputNode) throws JsonProcessingException, IOException {
+		// mSent might be null!
+	
+		if (!inputNode.isObject()) {
+			throw new RuntimeException("Cannot output into given JSON node");
+		}
+		
+		ObjectNode objectNode = (ObjectNode) inputNode;
+		StringBuilder sb = new StringBuilder();		
+		int T = lSent.T();
+		for (int t=0; t < T; t++) {
+			String token = lSent.tokens.get(t);
+			String tag = tagger.model.labelVocab.name(mSent.labels[t]);	
+			
+			sb.append(token);
+			sb.append("/");
+			sb.append(tag);
+			if (t != T - 1) {
+				sb.append(" ");
+			}
+		}
+
+				
+		objectNode.put("output_text", sb.toString());
+		outputGenerator.writeTree(objectNode);
+		outputStream.println();
+	}
+
+	
 	///////////////////////////////////////////////////////////////////
 
 

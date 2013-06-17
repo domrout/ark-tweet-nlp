@@ -15,11 +15,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 public class JsonTweetReader  {
 	ObjectMapper mapper;
+	JsonNode rootNode; // Temporary, used so that we can get out the node after a parse
 	
 	public JsonTweetReader() {
 		mapper = new ObjectMapper();
 	}
 	
+	public JsonNode getRootNode() {
+		return rootNode;
+	}
 	/**
 	 * Get the text from a raw Tweet JSON string.
 	 * 
@@ -27,8 +31,6 @@ public class JsonTweetReader  {
 	 * @return null if there is no text field, or invalid JSON.
 	 */
 	public String getText(String tweetJson) {
-		JsonNode rootNode; 
-		
 		try {
 			rootNode = mapper.readValue(tweetJson, JsonNode.class);
 		} catch (JsonParseException e) {
